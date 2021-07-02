@@ -1,0 +1,11 @@
+pillow~=8.2.0
+werkzeug~=2.0.1
+python-dateutil
+requests
+flask~=2.0.1
+Flask-WTF
+peewee
+pymysql~=1.0.2
+PyJWT~=2.1.0
+pyfcm~=1.5.1
+SQLAlchemy~=1.4.17

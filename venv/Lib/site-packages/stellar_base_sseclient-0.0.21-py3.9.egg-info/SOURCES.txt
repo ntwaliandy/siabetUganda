@@ -1,0 +1,12 @@
+LICENSE
+MANIFEST.in
+README.rst
+setup.cfg
+setup.py
+sseclient.py
+test_sseclient.py
+stellar_base_sseclient.egg-info/PKG-INFO
+stellar_base_sseclient.egg-info/SOURCES.txt
+stellar_base_sseclient.egg-info/dependency_links.txt
+stellar_base_sseclient.egg-info/requires.txt
+stellar_base_sseclient.egg-info/top_level.txt
