@@ -28,7 +28,6 @@ class Stellar:
         balance = server.claimable_balances().for_claimant(claimant_secret.public_key).call()
         for x in balance:
             print(x)
-
         print(balance)
         return balance
 
