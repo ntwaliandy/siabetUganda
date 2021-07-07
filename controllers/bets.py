@@ -64,6 +64,11 @@ def get_categories():
     return Bt.get_all_categories(q)
 
 
+@bp_app.route("/get_requests/<user_id>", methods=["GET"])
+def get_requests(user_id):
+    return Bt.get_requests(user_id)
+
+
 @bp_app.route("/approve_topic", methods=["POST"])
 def approve_topic():
     return Bt.approve_topic(request)

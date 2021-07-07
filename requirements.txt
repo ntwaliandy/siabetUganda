@@ -2,6 +2,7 @@ pillow~=8.2.0
 werkzeug~=2.0.1
 python-dateutil
 requests
+stellar_sdk
 flask~=2.0.1
 Flask-WTF
 peewee

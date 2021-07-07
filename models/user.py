@@ -155,6 +155,39 @@ class User:
         except Exception as e:
             return Md.make_response(203, "failed")
 
+    @staticmethod
+    def make_transfer(rq):
+        try:
+            data = rq.json
+            user_id = data['user_id']
+            amount = int(data['amount'])
+            sent_signature = data['signature']
+            sender_username_info = Md.get_user_by_user_id(user_id)
+            if len(sender_username_info) == 0:
+                return Md.make_response(404, "user not found")
+            sender_secret = sender_username_info[0]['seed_key']
+
+            if amount > 0:
+                receiver = data['receiver']
+                asset_code = data['asset_code']
+                asset_issuer = data['asset_issuer']
+                memo = data['memo']
+                signature = user_id + str((amount * 3333)) + receiver + memo + asset_issuer
+                amount = data['amount']
+
+                print(signature)
+                if signature != sent_signature:
+                    return Md.make_response(203, "server error.")
+
+                sender_key_pair = Keypair.from_secret(sender_secret)
+
+                txn_hash = Stellar().make_payment(sender_key_pair, receiver, asset_code, asset_issuer,
+                                                  amount, memo)
+                response = {"hash": txn_hash}
+                return Md.make_response(100, "success", response)
+        except Exception as e:
+            return Md.make_response(203,  str(e))
+
 
 def get_played(user_id):
     res = Db.select_query("select * from sia_bets where user_id = '" + user_id + "'")

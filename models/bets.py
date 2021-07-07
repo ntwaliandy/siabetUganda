@@ -364,6 +364,39 @@ class Bet:
         rs = get_leader_board()
         return jsonify(rs)
 
+    @staticmethod
+    def get_requests(user_id):
+        try:
+            res = get_requests(user_id)
+            bets = []
+            for x in res:
+                opponent_info = Md.get_user_by_user_id(x['user_id'])
+                if len(opponent_info) > 0:
+                    opponent_username = opponent_info[0]['username']
+                    opponent_avatar = AVATAR_URL + opponent_info[0]['avatar']
+                    response = {
+                        "topic_question": x['topic_question'],
+                        "bet_answer": x['bet_answer'],
+                        "bet_status": x['bet_status'],
+                        "match_status": x['match_status'],
+                        "avatar": AVATAR_URL + x['avatar'],
+                        "bet_type": x['bet_type'],
+                        "bt_id": x['bt_id'],
+                        "bet_id": x['bet_id'],
+                        "opponent_user_id": x['opponent_user_id'],
+                        "stake_amount": x['stake_amount'],
+                        "us_id": x['us_id'],
+                        "user_id": x['user_id'],
+                        "topic_id": x['topic_id'],
+                        "bet_final_result": x['bet_final_result'],
+                        "opponent_username": opponent_username,
+                        "opponent_avatar": opponent_avatar
+                    }
+                    bets.append(response)
+            return jsonify(bets)
+        except Exception as e:
+            return Md.make_response("203", str(e))
+
 
 def update_bet_matching(topic_id, txn_id, opponent_bet_id, bet_id, stake_amount, user_id, opponent_user_id):
     register_dict = {
@@ -451,6 +484,11 @@ def get_topic_detail(topic_id):
 def get_pending_topic_detail(topic_id):
     values = {"topic_id": topic_id, "approval_status": "pending", "reward_hash": ""}
     return Db.select("sia_topic", "*", **values)
+
+
+def get_requests(user_id):
+    return Db.select_query("select * from sia_bets  b  INNER JOIN sia_user u ON b.user_id = u.user_id INNER JOIN "
+                           "sia_topic t ON b.topic_id = t.topic_id WHERE match_status = 'unmatched' AND bet_status = 'open' AND b.opponent_user_id = '" + user_id + "' order by bt_id DESC")
 
 
 def get_categories():

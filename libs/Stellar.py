@@ -1,5 +1,7 @@
 from __future__ import print_function
 import datetime
+import stellar_sdk
+
 from stellar_sdk import Network, Keypair, Server, TransactionBuilder, Asset, Claimant, ClaimPredicate
 
 
@@ -32,37 +34,40 @@ class Stellar:
         return balance
 
     def create_claimable_balance(self, sender_secret, recipient_public_key, amount, memo):
-        sender_keypair = Keypair.from_secret(sender_secret)
-        server = Server(self.horizon)
-        sender_account = server.load_account(sender_keypair.public_key)
-        base_fee = server.fetch_base_fee()
-        bet_asset = Asset(self.bet_token, self.bet_token_issuer)
+        try:
+            sender_keypair = Keypair.from_secret(sender_secret)
+            server = Server(self.horizon)
+            sender_account = server.load_account(sender_keypair.public_key)
+            base_fee = server.fetch_base_fee()
+            bet_asset = Asset(self.bet_token, self.bet_token_issuer)
 
-        x = datetime.datetime.now()
-        y = x + datetime.timedelta(0, 60)
-        soon = int(y.timestamp())
+            x = datetime.datetime.now()
+            y = x + datetime.timedelta(0, 60)
+            soon = int(y.timestamp())
 
-        bCanClaim = ClaimPredicate.predicate_before_relative_time(60)
-        aCanReclaim = ClaimPredicate.predicate_not(ClaimPredicate.predicate_before_absolute_time(soon))
+            bCanClaim = ClaimPredicate.predicate_before_relative_time(60)
+            aCanReclaim = ClaimPredicate.predicate_not(ClaimPredicate.predicate_before_absolute_time(soon))
 
-        claimants_list = [
-            Claimant(recipient_public_key, bCanClaim),
-            Claimant(sender_keypair.public_key, aCanReclaim)
-        ]
+            claimants_list = [
+                Claimant(recipient_public_key, bCanClaim),
+                Claimant(sender_keypair.public_key, aCanReclaim)
+            ]
 
-        transaction = (
-            TransactionBuilder(
-                source_account=sender_account,
-                network_passphrase=self.network_passphrase,
-                base_fee=base_fee,
+            transaction = (
+                TransactionBuilder(
+                    source_account=sender_account,
+                    network_passphrase=self.network_passphrase,
+                    base_fee=base_fee,
+                )
+                    .add_text_memo(memo)
+                    .append_create_claimable_balance_op(asset=bet_asset, amount=amount, claimants=claimants_list)
+                    .build()
             )
-                .add_text_memo(memo)
-                .append_create_claimable_balance_op(asset=bet_asset, amount=amount, claimants=claimants_list)
-                .build()
-        )
-        transaction.sign(sender_keypair)
-        response = server.submit_transaction(transaction)
-        return response['hash']
+            transaction.sign(sender_keypair)
+            response = server.submit_transaction(transaction)
+            return response['hash']
+        except Exception as e:
+            return e['data']
 
     def bet_match_claimable_balance(self, sender_keypair, opponent_keypair, amount, memo):
         server = Server(self.horizon)
@@ -155,6 +160,7 @@ class Stellar:
         transaction.sign(sender_keypair)
         response = server.submit_transaction(transaction)
         return response['hash']
+
 
 
 def generate_keys():
