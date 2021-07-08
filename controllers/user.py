@@ -19,6 +19,12 @@ def register():
     return User.register_user(request)
 
 
+@bp_app.route("/user/make_validator", methods=["POST"])
+@token_required
+def make_validator(current_user):
+    return User.make_validator(request)
+
+
 @bp_app.route("/user/update_profile", methods=["POST"])
 def update_profile():
     return User.update_profile(request)

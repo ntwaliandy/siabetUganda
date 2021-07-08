@@ -1,1 +1,1 @@
-SELECT * FROM sia_user WHERE user_id=%s
+SELECT * FROM sia_fees WHERE operation=%s

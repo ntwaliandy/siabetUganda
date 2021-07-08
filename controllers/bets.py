@@ -40,7 +40,14 @@ def get_user_topics(current_user, user_id):
 
 @bp_app.route("/topics_feed/<user_id>", methods=["GET"])
 def topics_feed(user_id):
-    return Bt.topics_feed(user_id)
+    q = request.args.get("q")
+    return Bt.topics_feed(q, user_id)
+
+
+@bp_app.route("/pending_topics/<user_id>", methods=["GET"])
+@token_required
+def pending_topics(current_user, user_id):
+    return Bt.get_pending_topics(user_id)
 
 
 @bp_app.route("/user_bets/<user_id>", methods=["GET"])

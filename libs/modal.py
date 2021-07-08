@@ -76,6 +76,7 @@ class Modal:
         info = {
             "username": user_info['username'],
             "user_id": user_info['user_id'],
+            "fcm_key": user_info['fcm_key'],
             "avatar": AVATAR_URL + user_info['avatar']
         }
         return info

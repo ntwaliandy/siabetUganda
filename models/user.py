@@ -5,6 +5,7 @@ from flask import jsonify
 
 from libs.Stellar import Stellar
 from libs.database import Database as Db
+from libs.fcm import fcm
 from libs.modal import Modal as Md
 from config import SecretKey, AVATAR_URL
 from stellar_sdk import Server, Keypair, TransactionBuilder, Network
@@ -53,13 +54,15 @@ class User:
         auth = auth_user(username, password)
         if len(auth) > 0:
             public_key = auth[0]['public_key']
+            seed_key = auth[0]['seed_key']
             user_id = auth[0]['user_id']
             avatar = auth[0]['avatar']
+            mnemonic_phrase = Keypair.from_secret(seed_key).generate_mnemonic_phrase()
             avatar_url = AVATAR_URL + avatar
 
             jwt_token = jwt.encode(data, SecretKey, algorithm="HS256")
             user_data = {"jwt": jwt_token, "avatar": avatar_url, "user_id": user_id, "username": username,
-                         "public_key": public_key, "mnemonic_phrase": ""}
+                         "public_key": public_key, "mnemonic_phrase": mnemonic_phrase}
             return Md.make_response(100, "success", user_data)
         else:
             return Md.make_response(203, "Invalid username or password")
@@ -146,14 +149,40 @@ class User:
         try:
             data = rq.json
             user_id = data['user_id']
-            avatar = data['avatar']
+            fcm = data['fcm']
 
-            register_dict = {"avatar": avatar}
+            # fcm = data['fcm']
+
+            register_dict = {"fcm_token": fcm}
             Db.Update("sia_user", "user_id = '" + user_id + "'", **register_dict)
             return Md.make_response(100, "success")
 
         except Exception as e:
             return Md.make_response(203, "failed")
+
+    @staticmethod
+    def make_validator(rq):
+        try:
+            data = rq.json
+            user_id = data['user_id']
+            is_validator = data['isValidator']
+            username_info = Md.get_user_by_user_id(user_id)
+            if len(username_info) == 0:
+                return Md.make_response(404, "user not found")
+            fcm_key = username_info[0]['fcm_token']
+            list_keys = [fcm_key]
+
+            if is_validator:
+                fcm.manage_subscription(list_keys, "validators", "subscribe")
+            else:
+                fcm.manage_subscription(list_keys, "validators", "unsubscribe")
+
+            register_dict = {"isValidator": is_validator}
+            Db.Update("sia_user", "user_id = '" + user_id + "'", **register_dict)
+            return Md.make_response(100, "success")
+
+        except Exception as e:
+            return Md.make_response(203, "failed" + str(e))
 
     @staticmethod
     def make_transfer(rq):
@@ -186,7 +215,7 @@ class User:
                 response = {"hash": txn_hash}
                 return Md.make_response(100, "success", response)
         except Exception as e:
-            return Md.make_response(203,  str(e))
+            return Md.make_response(203, str(e))
 
 
 def get_played(user_id):

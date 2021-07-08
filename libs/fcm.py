@@ -11,6 +11,7 @@ class FCM:
     def send(self, registration_id, content, is_topic=None, topic_name=None):
         if is_topic is not None and topic_name is not None:
             result = self.push_service.notify_topic_subscribers(topic_name=topic_name, data_message=content)
+            print(result)
         else:
             result = self.push_service.notify_single_device(registration_id=registration_id, data_message=content)
         return result

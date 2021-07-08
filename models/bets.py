@@ -5,6 +5,7 @@ from flask import jsonify, request
 
 from libs.Stellar import Stellar
 from libs.database import Database as Db
+from libs.fcm import fcm
 from libs.modal import Modal as Md
 from config import SecretKey, AVATAR_URL
 from stellar_sdk import Server, Keypair, TransactionBuilder, Network
@@ -260,6 +261,9 @@ class Bet:
                 "topic_category_id": topic_category_id
             }
             last_id = Db.insert('sia_topic', **register_dict)
+
+            data_message = {"info": "This a new topic", "topic_title": topic_title}
+            fcm.send("", data_message, True, "validators")
             user_data = {"topic_id": bet_id}
             return Md.make_response(100, "topic created", user_data)
         except Exception as e:
@@ -270,7 +274,7 @@ class Bet:
         return None
 
     @staticmethod
-    def topics_feed(user_id):
+    def topics_feed(q, user_id):
         list_info = []
         categories = get_categories()
 
@@ -280,6 +284,34 @@ class Bet:
             topics_dic = {}
             bet_info = []
             for y in topics:
+                topic_start_date = y['topic_start_date']
+                topic_end_date = y['topic_end_date']
+                datee = topic_start_date.strftime("%Y-%m-%d %H:%M:%S")
+                y['start_date'] = datee
+
+                z = {}
+                bets = get_bets_for_topic(y['topic_id'])
+                y['bets'] = bets
+                y['bets_placed'] = len(bets)
+                bet_info.append(y)
+            if len(bet_info) > 0:
+                x['topics'] = bet_info
+                list_info.append(x)
+        return jsonify(list_info)
+
+    @staticmethod
+    def get_pending_topics(user_id):
+        list_info = []
+        categories = get_categories()
+
+        for x in categories:
+            x['isFavorite'] = True
+            topics = get_pending_topics(x['category_id'])
+
+            topics_dic = {}
+            bet_info = []
+            for y in topics:
+                y['avatar'] = AVATAR_URL + y['avatar']
                 topic_start_date = y['topic_start_date']
                 topic_end_date = y['topic_end_date']
                 datee = topic_start_date.strftime("%Y-%m-%d %H:%M:%S")
@@ -502,6 +534,12 @@ def get_all_payouts():
 def get_bets_feed():
     return Db.select_query("select * from sia_topic t  INNER JOIN sia_category c ON t.topic_category_id = "
                            "c.category_id ")
+
+
+def get_pending_topics(category_id):
+    category_id = str(category_id)
+    return Db.select_query(
+        "select * from sia_topic t INNER JOIN sia_user u ON t.topic_user_id = u.user_id where t.topic_category_id = " + category_id + " AND  t.topic_status = 'active'  ")
 
 
 def get_topics_for_category(category_id):

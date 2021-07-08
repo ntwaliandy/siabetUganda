@@ -1,6 +1,6 @@
 DEBUG = True
 MOCK_TEST = True
-fcm_api_key = 'dJnHc-61Qmycoj6v2pgVLW:APA91bEchWWf3GAVGUDJzlXLrx-qkOz_9cImhlYBdkj50CCESyki7CVroDz4Liz0OLhnD8JffoxhZbhKzccjgefilluLO59GwdhbhAKRt1t5CfYmK4oOymiLfTnM7bJt9mD2KHuBvKpX'
+fcm_api_key = 'AAAAAmjmsII:APA91bEPVZMoXboP5-CH5ymMlMRe_IEmYHrZFPER6v8pdv6gMlCfTH7PHWReEcYCbuhwKu1QsGZHF6DNxnvPIvCY-JBjqeMirkT_HDTwdTct0JMybY0rbcXuJDff7H6Rr8FDF-frQ5FI '
 AVATAR_URL = "http://192.168.43.169/sia/avatar/"
 
 FILES_LOCATION = 'file:///E:/work/python/Lyxa/uploads/'
