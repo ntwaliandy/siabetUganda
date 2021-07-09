@@ -2,7 +2,7 @@ import uuid
 
 import jwt
 from flask import jsonify, request
-
+from datetime import datetime
 from libs.Stellar import Stellar
 from libs.database import Database as Db
 from libs.fcm import fcm
@@ -29,13 +29,16 @@ class Bet:
             sender_username_info = Md.get_user_by_user_id(approved_by)
             if len(sender_username_info) == 0:
                 return Md.make_response(404, "user not found")
-            topic = get_pending_topic_detail(topic_id)
-            if len(topic) == 0:
-                return Md.make_response(404, "not found")
-
-            user_info = Md.get_user_by_user_id(topic[0]['topic_user_id'])
+            is_validator = sender_username_info[0]['isValidator']
+            if not is_validator:
+                return Md.make_response(101, "access error")
 
             if approval_status == "approved":
+                topic = get_pending_topic_detail(topic_id)
+                if len(topic) == 0:
+                    return Md.make_response(404, "not found")
+
+                user_info = Md.get_user_by_user_id(topic[0]['topic_user_id'])
                 fees = Md.get_fees("approve_topic")
                 if fees == 0:
                     return Md.make_response(203, "fee not found")
@@ -51,10 +54,14 @@ class Bet:
 
                 topic_info = {"approval_status": approval_status, "reward_hash": txn_hash, "approved_by": approved_by}
             else:
+                topic = get_topic_detail(topic_id)
+                if len(topic) == 0:
+                    return Md.make_response(404, "Topic not found")
                 approval_status = "rejected"
-                topic_info = {"approval_status": approval_status, "approved_by": approved_by}
+                topic_info = {"approval_status": approval_status, "topic_status": "cancelled",
+                              "approved_by": approved_by}
             Db.Update("sia_topic", "topic_id = '" + topic_id + "'", **topic_info)
-            return Md.make_response(100, approval_status, topic_info)
+            return Md.make_response(100, "Operation complete", topic_info)
         except Exception as e:
             return Md.make_response(403, str(e))
 
@@ -132,6 +139,8 @@ class Bet:
     @staticmethod
     def place_bet(rq):
         try:
+            now = datetime.utcnow().timestamp()
+            print(now)
 
             enc_password = ''
             data = rq.json
@@ -139,7 +148,7 @@ class Bet:
 
             user_id = str(data["user_id"])
             topic_id = data["topic_id"]
-            stake_amount = data["stake_amount"]
+            stake_amount = str(data["stake_amount"])
             asset_code = Stellar().bet_token
             asset_issuer = Stellar().bet_token_issuer
             opponent_user_id = data["opponent_user_id"]
@@ -147,7 +156,7 @@ class Bet:
             answer = data["answer"]
             answer_params = ["Yes", "No"]
             bet_status = 'unmatched'
-            memo = "demo_sia_bet"
+            memo = "placed bet"
             txn_hash = ""
             opponent_bet_id = data["opponent_bet_id"]
             opponent_info = None
@@ -156,6 +165,16 @@ class Bet:
             topic = get_topic_detail(topic_id)
             if len(topic) == 0:
                 return Md.make_response(404, "not found")
+            approval_status = topic[0]['approval_status']
+            begin_at = topic[0]['topic_start_date']
+            topic_status = topic[0]['topic_status']
+
+            if approval_status != "approved" or topic_status != "active":
+                return Md.make_response(403, "Not found")
+
+            begin_time_stamp = begin_at.timestamp()
+            if (begin_time_stamp - now) <= 0:
+                return Md.make_response(403, "Game already started")
 
             if user_id == "" or topic_id == "":
                 return Md.make_response(403, "fill all required fields")
@@ -410,6 +429,7 @@ class Bet:
                         "topic_question": x['topic_question'],
                         "bet_answer": x['bet_answer'],
                         "bet_status": x['bet_status'],
+                        "topic_start_date": x['topic_start_date'],
                         "match_status": x['match_status'],
                         "avatar": AVATAR_URL + x['avatar'],
                         "bet_type": x['bet_type'],
@@ -506,6 +526,11 @@ def make_payouts():
 
     except Exception as e:
         return Md.make_response(203, str(e))
+
+
+def get_topic(topic_id):
+    values = {"topic_id": topic_id}
+    return Db.select("sia_topic", "*", **values)
 
 
 def get_topic_detail(topic_id):

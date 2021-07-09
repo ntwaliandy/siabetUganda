@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 import random
 import jwt
@@ -23,6 +24,8 @@ class User:
             username = str(data["username"])
             password = data["password"]
             email = data["email"]
+            password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
             check_username = Md.get_user_by_username(username)
             if len(check_username) > 0:
                 return Md.make_response(203, "record already exists")
@@ -34,6 +37,7 @@ class User:
             Stellar().sponsor_account(public_key, user_keypair)
             user_id = str(uuid.uuid1())
             avatar = random.randint(0, 101)
+            is_validator  = False
             avatar = "user" + str(avatar) + ".png"
             register_dict = {"user_id": user_id, "avatar": avatar, "username": username, "password": password,
                              "email": email,
@@ -41,7 +45,7 @@ class User:
             last_id = Db.insert('sia_user', **register_dict)
             avatar_url = AVATAR_URL + avatar
             user_data = {"jwt": jwt_token, "avatar": avatar_url, "user_id": user_id, "username": username,
-                         "public_key": public_key, "mnemonic_phrase": mnemonic_phrase}
+                         "public_key": public_key, "isValidator": is_validator, "mnemonic_phrase": mnemonic_phrase}
             return Md.make_response(100, "success", user_data)
         except Exception as e:
             return Md.make_response(203, str(e))
@@ -51,18 +55,21 @@ class User:
         data = rq.json
         username = data['username']
         password = data['password']
+        password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
         auth = auth_user(username, password)
         if len(auth) > 0:
             public_key = auth[0]['public_key']
             seed_key = auth[0]['seed_key']
             user_id = auth[0]['user_id']
             avatar = auth[0]['avatar']
+            is_validator = auth[0]['isValidator']
             mnemonic_phrase = Keypair.from_secret(seed_key).generate_mnemonic_phrase()
             avatar_url = AVATAR_URL + avatar
 
             jwt_token = jwt.encode(data, SecretKey, algorithm="HS256")
             user_data = {"jwt": jwt_token, "avatar": avatar_url, "user_id": user_id, "username": username,
-                         "public_key": public_key, "mnemonic_phrase": mnemonic_phrase}
+                         "public_key": public_key, "isValidator": is_validator, "mnemonic_phrase": mnemonic_phrase}
             return Md.make_response(100, "success", user_data)
         else:
             return Md.make_response(203, "Invalid username or password")
@@ -150,13 +157,18 @@ class User:
             data = rq.json
             user_id = data['user_id']
             fcm = data['fcm']
+            user_info = Md.get_user_by_user_id(user_id)
+            if len(user_info) == 0:
+                return Md.make_response(404, "sender user id not found")
 
             # fcm = data['fcm']
+            is_validator = user_info[0]['isValidator']
 
             register_dict = {"fcm_token": fcm}
             Db.Update("sia_user", "user_id = '" + user_id + "'", **register_dict)
-            return Md.make_response(100, "success")
-
+            jwt_token = jwt.encode(data, SecretKey, algorithm="HS256")
+            user_data = {"jwt": jwt_token, "isValidator": is_validator}
+            return Md.make_response(100, "success", user_data)
         except Exception as e:
             return Md.make_response(203, "failed")
 

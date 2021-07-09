@@ -30,8 +30,8 @@ def update_profile():
     return User.update_profile(request)
 
 
-@bp_app.route("/user/search_users", methods=["GET"])
-def search_users():
+@bp_app.route("/user/search_users/<user_id>", methods=["GET"])
+def search_users(user_id):
     q = request.args.get("q")
     return User.search_users(q)
 
