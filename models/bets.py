@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import jwt
@@ -10,6 +11,8 @@ from libs.modal import Modal as Md
 from config import SecretKey, AVATAR_URL
 from stellar_sdk import Server, Keypair, TransactionBuilder, Network
 from datetime import datetime, timedelta
+
+from models.user import User
 
 
 class Bet:
@@ -61,13 +64,16 @@ class Bet:
                 topic_info = {"approval_status": approval_status, "topic_status": "cancelled",
                               "approved_by": approved_by}
             Db.Update("sia_topic", "topic_id = '" + topic_id + "'", **topic_info)
+            send_notification("", user_info[0]['fcm_token'], approval_status)
             return Md.make_response(100, "Operation complete", topic_info)
         except Exception as e:
             return Md.make_response(403, str(e))
 
     @staticmethod
     def make_payments_payouts():
-        return make_payouts()
+        rs = make_payouts("refundable")
+        rs_w = make_payouts("won")
+        return rs_w
 
     @staticmethod
     def insert_game_result(rq):
@@ -95,6 +101,7 @@ class Bet:
                     stake_amount = x['stake_amount']
                     match_status = x['match_status']
                     public_key = x['public_key']
+                    fcm_token = x['fcm_token']
                     bt_id = x['bt_id']
                     user_id = x['user_id']
                     match_id = x['match_id']
@@ -110,8 +117,9 @@ class Bet:
                         payable = True
                         memo = "refund" + str(bt_id)
                         bet_final_result = "refundable"
-                    print(bet_final_result)
+
                     if payable:
+                        send_notification(user_id, fcm_token, bet_final_result)
                         try:
                             payable_bet = {
                                 "match_id": match_id,
@@ -131,7 +139,8 @@ class Bet:
                     # Db.Update("sia_bet_match ", "bet_match_id = '" + bet_match_id + "'", **matchInfo)
                     Db.Update("sia_topic", "topic_id = '" + topic_id + "'", **topic_info)
                     Db.Update("sia_bets", "bet_id = '" + bet_id + "'", **bet_info)
-            make_payouts()
+            make_payouts("won")
+            make_payouts("refundable")
             return Md.make_response(100, "operations complete")
         except Exception as e:
             return Md.make_response(403, str(e))
@@ -140,13 +149,8 @@ class Bet:
     def place_bet(rq):
         try:
             now = datetime.utcnow().timestamp()
-            print(now)
-
-            enc_password = ''
             data = rq.json
-            print(data)
-
-            user_id = str(data["user_id"])
+            user_id = data["user_id"]
             topic_id = data["topic_id"]
             stake_amount = str(data["stake_amount"])
             asset_code = Stellar().bet_token
@@ -158,6 +162,9 @@ class Bet:
             bet_status = 'unmatched'
             memo = "placed bet"
             txn_hash = ""
+            message_type = ""
+            opponent_fcm = ""
+            message_title = "Bet Challeng"
             opponent_bet_id = data["opponent_bet_id"]
             opponent_info = None
             bet_id = str(uuid.uuid1())
@@ -187,6 +194,7 @@ class Bet:
                 return Md.make_response(404, "user not found")
 
             sender_secret = sender_username_info[0]['seed_key']
+            sender_username = sender_username_info[0]['username']
 
             topic_detail = get_topic_detail(topic_id)
             if len(topic_detail) == 0:
@@ -197,6 +205,7 @@ class Bet:
                 if len(opponent_info) == 0:
                     return Md.make_response(404, "opponent not found")
                 else:
+                    message_type = "accept"
                     bet_status = 'matched'
             else:
                 if bet_type == 'p2p':
@@ -204,21 +213,23 @@ class Bet:
                     if len(opponent_info) == 0:
                         return Md.make_response(404, "opponent_username not found")
                     else:
+                        message_type = "new_request"
                         bet_status = 'unmatched'
                 else:
                     opponent_info = get_worth_opponent(user_id, answer, topic_id, stake_amount)
                     if len(opponent_info) > 0:
+                        message_type = "matched_bet"
                         bet_status = 'matched'
 
-            if len(opponent_info) > 0 and bet_status == 'matched':
+            if len(opponent_info) > 0:
                 opponent_user_id = opponent_info[0]['user_id']
-                opponent_bet_id = opponent_info[0]['bet_id']
+                opponent_fcm = opponent_info[0]['fcm_token']
+                opponent_username = opponent_info[0]['username']
 
             recipient_public_key = Stellar().escrowAccount
             sender_key_pair = Keypair.from_secret(sender_secret)
-            print(sender_secret)
-            txn_hash = Stellar().make_payment(sender_key_pair, recipient_public_key, asset_code, asset_issuer,
-                                              stake_amount, memo)
+            txn_hash = Stellar().make_payment(sender_key_pair, recipient_public_key, asset_code, asset_issuer,stake_amount, memo)
+            print(opponent_fcm)
 
             bet_dict = {
                 "bet_txn_hash": txn_hash,
@@ -235,8 +246,25 @@ class Bet:
             }
             last_id = Db.insert('sia_bets', **bet_dict)
             if bet_status == 'matched':
+                opponent_bet_id = opponent_info[0]['bet_id']
                 update_bet_matching(topic_id, txn_hash, opponent_bet_id, bet_id, stake_amount, user_id,
                                     opponent_user_id)
+            if opponent_fcm != "" and message_type != "":
+                print("here")
+                print(opponent_fcm)
+                follow_data = {"user_id": user_id, "follow_user_id": opponent_user_id, "follow_status": "active"}
+                User.follow_user(follow_data)
+                message_info = get_notification(message_type)
+                if len(message_info) > 0:
+                    message = message_info[0]["message"]
+                    title = message_info[0]["title"]
+                    message_type = message_info[0]["type"]
+                    message = message + " with " + str(stake_amount) + " SIA"
+                    final_message = message.replace("sender_username", sender_username)
+                    message_dic = {"title": title, "message": final_message, "type": message_type}
+                    rs = fcm.send(opponent_fcm, message_dic)
+                    print(rs)
+
             user_data = {"txn_hash": txn_hash, "bet_id": bet_id}
             return Md.make_response(100, "bet placed", user_data)
         except Exception as e:
@@ -281,7 +309,8 @@ class Bet:
             }
             last_id = Db.insert('sia_topic', **register_dict)
 
-            data_message = {"info": "This a new topic", "topic_title": topic_title}
+            data_message = {"message": "A new topic has been sent for approval", "title": "New topic alert",
+                            "type": "validate"}
             fcm.send("", data_message, True, "validators")
             user_data = {"topic_id": bet_id}
             return Md.make_response(100, "topic created", user_data)
@@ -296,10 +325,33 @@ class Bet:
     def topics_feed(q, user_id):
         list_info = []
         categories = get_categories()
+        user_info = Md.get_user_by_user_id(user_id)
+        if len(user_info) == 0:
+            return []
+        favorites = user_info[0]['favorites']
+        fav_list = []
+        if favorites != "":
+            fav_list = json.loads(favorites)
 
         for x in categories:
-            x['isFavorite'] = True
-            topics = get_topics_for_category(x['category_id'])
+            is_favorite = False
+            cat_id = x['category_id']
+            category_name = x['category_name']
+            topics = []
+            if cat_id in fav_list:
+                is_favorite = True
+
+            x['isFavorite'] = is_favorite
+            if q == "Favorites":
+                if is_favorite:
+                    topics = get_topics_for_category(x['category_id'])
+            elif q == "My Topics":
+                topics = get_all_topics_for_user(x['category_id'], user_id)
+            elif q == category_name:
+                topics = get_topics_for_category(x['category_id'])
+            else:
+                topics = get_topics_for_category(x['category_id'])
+
             topics_dic = {}
             bet_info = []
             for y in topics:
@@ -413,7 +465,20 @@ class Bet:
     @staticmethod
     def leaderboard():
         rs = get_leader_board()
-        return jsonify(rs)
+        i = 1
+        app_list = []
+        for x in rs:
+            info = {
+                "position": i,
+                "avatar": AVATAR_URL + x['avatar'],
+                "username": x['username'],
+                "stake": x['stake']
+            }
+
+            i = i + 1
+            app_list.append(info)
+
+        return jsonify(app_list)
 
     @staticmethod
     def get_requests(user_id):
@@ -478,9 +543,23 @@ def update_bet_matching(topic_id, txn_id, opponent_bet_id, bet_id, stake_amount,
     Db.Update("sia_bets", "bet_id = '" + opponent_bet_id + "'", **update_user_two_status)
 
 
-def make_payouts():
+def update_refund_bets(txn_hash):
+    values = {"txn_hash": txn_hash, "reason": "refundable"}
+    rs = Db.select("sia_payable_bets", "*", **values)
+    for x in rs:
+        bet_id = x['bet_id']
+        txn_info = {"bet_final_result": "refunded"}
+        Db.Update("sia_bets ", "bet_id = '" + bet_id + "' AND bet_status = 'closed'", **txn_info)
+    return True
+
+
+def make_payouts(reason):
     try:
-        pending_payouts = get_all_payouts()
+        payout_method = ["won", "refundable"]
+        if reason not in payout_method:
+            return Md.make_response(404, "invalid reason")
+
+        pending_payouts = get_all_payouts(reason)
         if len(pending_payouts):
             Md.make_response(404, "No pending payouts")
 
@@ -517,6 +596,9 @@ def make_payouts():
             txn_hash = response['hash']
             txn_info = {"txn_hash": txn_hash, "pay_status": "paid"}
             Db.Update("sia_payable_bets ", "pay_id = '" + pay_id + "'", **txn_info)
+            if reason == "refundable":
+                update_refund_bets(txn_hash)
+
             return Md.make_response(100, txn_hash)
 
         except Exception as e:
@@ -524,6 +606,26 @@ def make_payouts():
             Db.Update("sia_payable_bets ", "pay_id = '" + pay_id + "'", **txn_info)
             return Md.make_response(203, str(e))
 
+    except Exception as e:
+        return Md.make_response(203, str(e))
+
+
+def send_notification(user_id, fcm_token, bet_status):
+    try:
+        if fcm_token == "":
+            username_info = Md.get_user_by_user_id(user_id)
+            if len(username_info) == 0:
+                return Md.make_response(404, "user not found")
+            fcm_token = username_info[0]['fcm_token']
+
+        message_info = get_notification(bet_status)
+        if len(message_info) > 0:
+            message = message_info[0]["message"]
+            title = message_info[0]["title"]
+            message_type = message_info[0]["type"]
+            message_dic = {"title": title, "message": message, "type": message_type}
+            fcm.send(fcm_token, message_dic)
+        return True
     except Exception as e:
         return Md.make_response(203, str(e))
 
@@ -549,11 +651,16 @@ def get_requests(user_id):
 
 
 def get_categories():
-    return Db.select_query("select * from  sia_category ")
+    return Db.select_query("select * from  sia_category")
 
 
-def get_all_payouts():
-    return Db.select_query("select * from sia_payable_bets where txn_hash = '' AND pay_status='pending' LIMIT 100  ")
+def get_notification(position):
+    return Db.select_query("select * from  sia_notifications  where position = '" + position + "' ")
+
+
+def get_all_payouts(reason):
+    return Db.select_query(
+        "select * from sia_payable_bets where txn_hash = '' AND pay_status='pending' AND reason = '" + reason + "' LIMIT 100  ")
 
 
 def get_bets_feed():
@@ -570,7 +677,13 @@ def get_pending_topics(category_id):
 def get_topics_for_category(category_id):
     category_id = str(category_id)
     return Db.select_query("select * from sia_topic t INNER JOIN sia_user u ON t.topic_user_id = u.user_id where "
-                           "t.topic_category_id = " + category_id + " AND approval_status = 'approved' and topic_status='active' order by topic_start_date desc")
+                           "t.topic_category_id = " + category_id + " AND approval_status = 'approved' and topic_status='active' order by t.topic_start_date ASC")
+
+
+def get_all_topics_for_user(category_id, user_id):
+    category_id = str(category_id)
+    return Db.select_query("select * from sia_topic t INNER JOIN sia_user u ON t.topic_user_id = u.user_id where "
+                           "t.topic_category_id = " + category_id + " AND t.topic_user_id = '" + user_id + "' approval_status = 'approved' and topic_status='active' order by t.topic_start_date ASC")
 
 
 def get_worth_opponent(user_id, answer, topic_id, amount):
@@ -605,7 +718,7 @@ def get_matched_bets(topic_id):
 
 def get_all_user_bets(user_id):
     return Db.select_query("select * from sia_bets  b  INNER JOIN sia_user u ON b.user_id = u.user_id INNER JOIN "
-                           "sia_topic t ON b.topic_id = t.topic_id WHERE b.user_id = '" + user_id + "' order by bt_id DESC LIMIT 10")
+                           "sia_topic t ON b.topic_id = t.topic_id WHERE b.user_id = '" + user_id + "' order by bt_id DESC LIMIT 50")
 
 
 def get_leader_board():
@@ -616,7 +729,7 @@ def get_leader_board():
 
 def get_bets_for_topic(topic_id):
     res = Db.select_query("select * from sia_bets  b  INNER JOIN sia_user u ON b.user_id = u.user_id WHERE b.topic_id "
-                          "= '" + topic_id + "' AND match_status='unmatched'")
+                          "= '" + topic_id + "' AND match_status='unmatched' AND opponent_user_id = '' ")
     bets = []
     for x in res:
         response = {

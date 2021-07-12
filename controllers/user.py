@@ -30,6 +30,21 @@ def update_profile():
     return User.update_profile(request)
 
 
+@bp_app.route("/user/update_favorite", methods=["POST"])
+def update_favorite():
+    return User.update_favorite(request)
+
+
+@bp_app.route("/user/password_reset_init", methods=["POST"])
+def password_reset_init():
+    return User.change_password_init(request)
+
+
+@bp_app.route("/user/password_reset", methods=["POST"])
+def password_reset():
+    return User.change_password(request)
+
+
 @bp_app.route("/user/search_users/<user_id>", methods=["GET"])
 def search_users(user_id):
     q = request.args.get("q")
@@ -43,7 +58,7 @@ def profile(user_id):
 
 @bp_app.route("/user/follow_user", methods=["POST"])
 def follow_user():
-    return User.follow_user(request)
+    return User.follow_user(request.json)
 
 
 @bp_app.route("/user/following/<user_id>", methods=["GET"])

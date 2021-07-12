@@ -1,1 +1,1 @@
-UPDATE sia_user SET fcm_token=%s WHERE user_id = 'b48f0241-e0e1-11eb-9178-5ce0c5d6e3f3'
+SELECT * FROM sia_user WHERE user_id=%s

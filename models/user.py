@@ -1,4 +1,6 @@
 import hashlib
+import json
+import re
 import uuid
 import random
 import jwt
@@ -24,6 +26,13 @@ class User:
             username = str(data["username"])
             password = data["password"]
             email = data["email"]
+
+            if username == "" or len(username) < 3 or password == "" or len(password) < 6:
+                return Md.make_response(203, "username should be over 3 characters and password over 6")
+
+            if not is_valid_email:
+                return Md.make_response(404, "enter a valid email")
+
             password = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
             check_username = Md.get_user_by_username(username)
@@ -37,7 +46,7 @@ class User:
             Stellar().sponsor_account(public_key, user_keypair)
             user_id = str(uuid.uuid1())
             avatar = random.randint(0, 101)
-            is_validator  = False
+            is_validator = False
             avatar = "user" + str(avatar) + ".png"
             register_dict = {"user_id": user_id, "avatar": avatar, "username": username, "password": password,
                              "email": email,
@@ -52,27 +61,30 @@ class User:
 
     @staticmethod
     def login(rq):
-        data = rq.json
-        username = data['username']
-        password = data['password']
-        password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        try:
+            data = rq.json
+            username = data['username']
+            password = data['password']
+            password = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-        auth = auth_user(username, password)
-        if len(auth) > 0:
-            public_key = auth[0]['public_key']
-            seed_key = auth[0]['seed_key']
-            user_id = auth[0]['user_id']
-            avatar = auth[0]['avatar']
-            is_validator = auth[0]['isValidator']
-            mnemonic_phrase = Keypair.from_secret(seed_key).generate_mnemonic_phrase()
-            avatar_url = AVATAR_URL + avatar
+            auth = auth_user(username, password)
+            if len(auth) > 0:
+                public_key = auth[0]['public_key']
+                seed_key = auth[0]['seed_key']
+                user_id = auth[0]['user_id']
+                avatar = auth[0]['avatar']
+                is_validator = auth[0]['isValidator']
+                mnemonic_phrase = Keypair.from_secret(seed_key).generate_mnemonic_phrase()
+                avatar_url = AVATAR_URL + avatar
 
-            jwt_token = jwt.encode(data, SecretKey, algorithm="HS256")
-            user_data = {"jwt": jwt_token, "avatar": avatar_url, "user_id": user_id, "username": username,
-                         "public_key": public_key, "isValidator": is_validator, "mnemonic_phrase": mnemonic_phrase}
-            return Md.make_response(100, "success", user_data)
-        else:
-            return Md.make_response(203, "Invalid username or password")
+                jwt_token = jwt.encode(data, SecretKey, algorithm="HS256")
+                user_data = {"jwt": jwt_token, "avatar": avatar_url, "user_id": user_id, "username": username,
+                             "public_key": public_key, "isValidator": is_validator, "mnemonic_phrase": mnemonic_phrase}
+                return Md.make_response(100, "success", user_data)
+            else:
+                return Md.make_response(203, "Invalid username or password")
+        except Exception as e:
+            return Md.make_response(203, str(e))
 
     @staticmethod
     def search_users(q):
@@ -116,10 +128,8 @@ class User:
         return info
 
     @staticmethod
-    def follow_user(rq):
+    def follow_user(data):
         try:
-
-            data = rq.json
             sender_user_id = data['user_id']
             follow_user_id = data['follow_user_id']
             follow_status = data['follow_status']
@@ -170,6 +180,76 @@ class User:
             user_data = {"jwt": jwt_token, "isValidator": is_validator}
             return Md.make_response(100, "success", user_data)
         except Exception as e:
+            return Md.make_response(203, "failed")
+
+    @staticmethod
+    def change_password_init(rq):
+        try:
+            data = rq.json
+            username = data['username']
+            email = data['email']
+            user_info = Md.get_user_by_username(username, email)
+            if len(user_info) == 0:
+                return Md.make_response(404, "username or email not found")
+
+            code = 55555
+            register_dict = {"auth_code": code}
+            Db.Update("sia_user", "username = '" + username + "'", **register_dict)
+            return Md.make_response(100, "code sent")
+        except Exception as e:
+            return Md.make_response(203, "failed")
+
+    @staticmethod
+    def change_password(rq):
+        try:
+            data = rq.json
+            username = data['username']
+            code = data['code']
+            password = data['password']
+            confirm_password = data['confirm_password']
+
+            if password != confirm_password:
+                return Md.make_response(404, "passwords don't match")
+
+            if len(password) < 6:
+                return Md.make_response(404, "passwords too short. password should be more than 6 characters")
+
+            user_info = Md.get_user_by_code(username, code)
+            if len(user_info) == 0:
+                return Md.make_response(404, "code not found for user")
+            password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+            register_dict = {"password": password}
+            Db.Update("sia_user", "username = '" + username + "'", **register_dict)
+            return Md.make_response(100, "Your password has been reset")
+        except Exception as e:
+            return Md.make_response(203, "failed")
+
+    @staticmethod
+    def update_favorite(rq):
+        try:
+            data = rq.json
+            user_id = data['user_id']
+            cat_id = data['category_name']
+            user_info = Md.get_user_by_user_id(user_id)
+            if len(user_info) == 0:
+                return Md.make_response(404, "sender user id not found")
+
+            favorites = user_info[0]['favorites']
+            fav_list = []
+            if favorites == "":
+                fav_list.append(cat_id)
+            else:
+                fav_list = json.loads(favorites)
+                if cat_id not in fav_list:
+                    fav_list.append(cat_id)
+                else:
+                    fav_list.remove(cat_id)
+            register_dict = {"favorites": json.dumps(fav_list)}
+            Db.Update("sia_user", "user_id = '" + user_id + "'", **register_dict)
+            return Md.make_response(100, "success")
+        except Exception as e:
+            print(str(e))
             return Md.make_response(203, "failed")
 
     @staticmethod
@@ -240,14 +320,19 @@ def get_won(user_id):
     return res
 
 
+def get_category_by_name(category_name):
+    res = Db.select_query("select * from sia_category  where category_name = '" + category_name + "'")
+    return res
+
+
 def get_lost(user_id):
     res = Db.select_query("select * from sia_bets where bet_final_result = 'lost' and  user_id = '" + user_id + "'")
     return res
 
 
 def followers(user_id):
-    res = Db.select_query(
-        "select * from sia_user_follow f inner join  sia_user u ON f.user_id = u.user_id where following_user_id = '" + user_id + "'")
+    res = Db.select_query("select * from sia_user_follow f inner join  sia_user u ON f.user_id = u.user_id where "
+                          "following_user_id = '" + user_id + "'")
     return res
 
 
@@ -255,6 +340,14 @@ def get_following(user_id):
     res = Db.select_query(
         "select * from sia_user_follow f inner join sia_user u ON f.following_user_id = u.user_id where f.user_id = '" + user_id + "'")
     return res
+
+
+def is_valid_email(email):
+    regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    if re.match(regex, email):
+        return True
+    else:
+        return False
 
 
 def auth_user(username, password):

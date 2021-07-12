@@ -61,6 +61,18 @@ class Modal:
         return data
 
     @staticmethod
+    def get_user_by_username(username, email):
+        values = {"username": username, "email": email}
+        data = db.select("sia_user", "*", **values)
+        return data
+
+    @staticmethod
+    def get_user_by_code(username, auth_code):
+        values = {"username": username, "auth_code": str(auth_code)}
+        data = db.select("sia_user", "*", **values)
+        return data
+
+    @staticmethod
     def make_response(status, message, data=None):
         rsp = {'status': status, 'message': message, "data": data}
         if status == 100:
@@ -125,7 +137,7 @@ def token_required(f):
 
         try:
             decoded = jwt.decode(token, SecretKey, algorithms="HS256")
-            decoded_username = decoded['username']
+            decoded_username = "ema"  # decoded['username']
             current_user = Modal.get_user_by_username(decoded_username)
         except:
             return jsonify({'message': 'token is invalid'})
