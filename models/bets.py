@@ -64,7 +64,7 @@ class Bet:
                 topic_info = {"approval_status": approval_status, "topic_status": "cancelled",
                               "approved_by": approved_by}
             Db.Update("sia_topic", "topic_id = '" + topic_id + "'", **topic_info)
-            send_notification("", user_info[0]['fcm_token'], approval_status)
+            Md.send_notification("", user_info[0]['fcm_token'], approval_status)
             return Md.make_response(100, "Operation complete", topic_info)
         except Exception as e:
             return Md.make_response(403, str(e))
@@ -119,7 +119,7 @@ class Bet:
                         bet_final_result = "refundable"
 
                     if payable:
-                        send_notification(user_id, fcm_token, bet_final_result)
+                        Md.send_notification(user_id, fcm_token, bet_final_result)
                         try:
                             payable_bet = {
                                 "match_id": match_id,
@@ -228,7 +228,8 @@ class Bet:
 
             recipient_public_key = Stellar().escrowAccount
             sender_key_pair = Keypair.from_secret(sender_secret)
-            txn_hash = Stellar().make_payment(sender_key_pair, recipient_public_key, asset_code, asset_issuer,stake_amount, memo)
+            txn_hash = Stellar().make_payment(sender_key_pair, recipient_public_key, asset_code, asset_issuer,
+                                              stake_amount, memo)
             print(opponent_fcm)
 
             bet_dict = {
@@ -324,51 +325,58 @@ class Bet:
     @staticmethod
     def topics_feed(q, user_id):
         list_info = []
-        categories = get_categories()
-        user_info = Md.get_user_by_user_id(user_id)
-        if len(user_info) == 0:
-            return []
-        favorites = user_info[0]['favorites']
-        fav_list = []
-        if favorites != "":
-            fav_list = json.loads(favorites)
+        try:
+            categories = get_categories()
+            user_info = Md.get_user_by_user_id(user_id)
+            if len(user_info) == 0:
+                return jsonify(list_info)
+            favorites = user_info[0]['favorites']
+            fav_list = []
+            if favorites != "":
+                fav_list = json.loads(favorites)
 
-        for x in categories:
-            is_favorite = False
-            cat_id = x['category_id']
-            category_name = x['category_name']
-            topics = []
-            if cat_id in fav_list:
-                is_favorite = True
+            for x in categories:
+                is_favorite = False
+                cat_id = x['category_id']
+                category_name = x['category_name']
+                topics = []
+                if cat_id in fav_list:
+                    is_favorite = True
 
-            x['isFavorite'] = is_favorite
-            if q == "Favorites":
-                if is_favorite:
+                x['isFavorite'] = is_favorite
+                if q == "Favorites":
+                    if is_favorite:
+                        topics = get_topics_for_category(x['category_id'])
+                elif q == "My Topics":
+                    topics = get_all_topics_for_user(x['category_id'], user_id)
+                elif q == category_name:
                     topics = get_topics_for_category(x['category_id'])
-            elif q == "My Topics":
-                topics = get_all_topics_for_user(x['category_id'], user_id)
-            elif q == category_name:
-                topics = get_topics_for_category(x['category_id'])
-            else:
-                topics = get_topics_for_category(x['category_id'])
+                else:
+                    topics = get_topics_for_category(x['category_id'])
 
-            topics_dic = {}
-            bet_info = []
-            for y in topics:
-                topic_start_date = y['topic_start_date']
-                topic_end_date = y['topic_end_date']
-                datee = topic_start_date.strftime("%Y-%m-%d %H:%M:%S")
-                y['start_date'] = datee
+                topics_dic = {}
+                bet_info = []
+                for y in topics:
+                    topic_start_date = y['topic_start_date']
+                    topic_end_date = y['topic_end_date']
+                    start_date = topic_start_date.strftime("%Y-%m-%d %H:%M:%S")
+                    y['start_date'] = start_date
 
-                z = {}
-                bets = get_bets_for_topic(y['topic_id'])
-                y['bets'] = bets
-                y['bets_placed'] = len(bets)
-                bet_info.append(y)
-            if len(bet_info) > 0:
-                x['topics'] = bet_info
-                list_info.append(x)
-        return jsonify(list_info)
+                    z = {}
+                    bets = get_bets_for_topic(y['topic_id'])
+                    y['bets'] = bets
+                    y['bets_placed'] = len(bets)
+                    y['total_bets_placed'] = total_bets_placed(y['topic_id'], "all")
+                    y['total_bets_placed_yes'] = total_bets_placed(y['topic_id'], "yes")
+                    y['total_bets_placed_no'] = total_bets_placed(y['topic_id'], "no")
+                    bet_info.append(y)
+                if len(bet_info) > 0:
+                    x['topics'] = bet_info
+                    list_info.append(x)
+            return jsonify(list_info)
+        except Exception as e:
+            print("now here")
+            return jsonify(list_info)
 
     @staticmethod
     def get_pending_topics(user_id):
@@ -610,26 +618,6 @@ def make_payouts(reason):
         return Md.make_response(203, str(e))
 
 
-def send_notification(user_id, fcm_token, bet_status):
-    try:
-        if fcm_token == "":
-            username_info = Md.get_user_by_user_id(user_id)
-            if len(username_info) == 0:
-                return Md.make_response(404, "user not found")
-            fcm_token = username_info[0]['fcm_token']
-
-        message_info = get_notification(bet_status)
-        if len(message_info) > 0:
-            message = message_info[0]["message"]
-            title = message_info[0]["title"]
-            message_type = message_info[0]["type"]
-            message_dic = {"title": title, "message": message, "type": message_type}
-            fcm.send(fcm_token, message_dic)
-        return True
-    except Exception as e:
-        return Md.make_response(203, str(e))
-
-
 def get_topic(topic_id):
     values = {"topic_id": topic_id}
     return Db.select("sia_topic", "*", **values)
@@ -654,10 +642,6 @@ def get_categories():
     return Db.select_query("select * from  sia_category")
 
 
-def get_notification(position):
-    return Db.select_query("select * from  sia_notifications  where position = '" + position + "' ")
-
-
 def get_all_payouts(reason):
     return Db.select_query(
         "select * from sia_payable_bets where txn_hash = '' AND pay_status='pending' AND reason = '" + reason + "' LIMIT 100  ")
@@ -678,6 +662,10 @@ def get_topics_for_category(category_id):
     category_id = str(category_id)
     return Db.select_query("select * from sia_topic t INNER JOIN sia_user u ON t.topic_user_id = u.user_id where "
                            "t.topic_category_id = " + category_id + " AND approval_status = 'approved' and topic_status='active' order by t.topic_start_date ASC")
+
+
+def get_notification(position):
+    return Db.select_query("select * from  sia_notifications  where position = '" + position + "' ")
 
 
 def get_all_topics_for_user(category_id, user_id):
@@ -725,6 +713,16 @@ def get_leader_board():
     return Db.select_query(
         "select *,sum(stake_amount) as stake from sia_bets  b  INNER JOIN sia_user u ON b.user_id = u.user_id  "
         "WHERE bet_final_result = 'won' group by b.user_id order by stake desc")
+
+
+def total_bets_placed(topic_id, enu):
+    if enu == "all":
+        res = Db.select_query("select count(*) as bets from sia_bets   WHERE topic_id   ='" + topic_id + "' ")
+    else:
+        res = Db.select_query(
+            "select count(*) as bets from sia_bets   WHERE topic_id   ='" + topic_id + "' AND bet_answer = '" + enu + "' ")
+
+    return res[0]['bets']
 
 
 def get_bets_for_topic(topic_id):

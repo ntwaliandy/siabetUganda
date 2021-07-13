@@ -23,26 +23,18 @@ class Database:
 
     @staticmethod
     def select(table, columns, **d):
-        try:
-            sql = 'SELECT ' + columns + ' FROM ' + table + ' WHERE {}'.format('AND '.join('{}=%s'.format(k) for k in d))
-            write_to_file(sql)
-            values = tuple(d.values())
-            conn.execute(sql, values)
-            rows = conn.fetchall()
-            return rows
-        except Exception as e:
-            print(e)
-            return None
+        sql = 'SELECT ' + columns + ' FROM ' + table + ' WHERE {}'.format('AND '.join('{}=%s'.format(k) for k in d))
+        write_to_file(sql)
+        values = tuple(d.values())
+        conn.execute(sql, values)
+        rows = conn.fetchall()
+        return rows
 
     @staticmethod
     def select_query(query):
-        try:
-            conn.execute(query)
-            rows = conn.fetchall()
-            return rows
-        except Exception as e:
-            print(e)
-            return None
+        conn.execute(query)
+        rows = conn.fetchall()
+        return rows
 
     @staticmethod
     def Update(table, where, **d):

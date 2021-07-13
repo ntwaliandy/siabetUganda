@@ -7,6 +7,7 @@ from flask import jsonify, json, request
 from urllib3.packages.six import wraps
 from werkzeug.utils import secure_filename
 from config import SecretKey, AVATAR_URL
+from libs.fcm import fcm
 from libs.database import Database as db
 
 
@@ -36,7 +37,7 @@ class Modal:
             return False
 
     @staticmethod
-    def get_user_by_username(user_id):
+    def get_username(user_id):
         values = {"username": user_id}
         data = db.select("sia_user", "*", **values)
         return data
@@ -84,6 +85,26 @@ class Modal:
         return jsonify(rsp), code
 
     @staticmethod
+    def send_notification(user_id, fcm_token, bet_status):
+        try:
+            if fcm_token == "":
+                username_info = modal.get_user_by_user_id(user_id)
+                if len(username_info) == 0:
+                    return False
+                fcm_token = username_info[0]['fcm_token']
+
+            message_info = get_notification(bet_status)
+            if len(message_info) > 0:
+                message = message_info[0]["message"]
+                title = message_info[0]["title"]
+                message_type = message_info[0]["type"]
+                message_dic = {"title": title, "message": message, "type": message_type}
+                fcm.send(fcm_token, message_dic)
+            return True
+        except Exception as e:
+            return False
+
+    @staticmethod
     def get_user_info(user_info):
         info = {
             "username": user_info['username'],
@@ -92,6 +113,10 @@ class Modal:
             "avatar": AVATAR_URL + user_info['avatar']
         }
         return info
+
+
+def get_notification(position):
+    return db.select_query("select * from  sia_notifications  where position = '" + position + "' ")
 
 
 def make_this_response(status, message):
@@ -138,7 +163,7 @@ def token_required(f):
         try:
             decoded = jwt.decode(token, SecretKey, algorithms="HS256")
             decoded_username = "ema"  # decoded['username']
-            current_user = Modal.get_user_by_username(decoded_username)
+            current_user = Modal.get_username(decoded_username)
         except:
             return jsonify({'message': 'token is invalid'})
         return f(current_user, *args, **kwargs)

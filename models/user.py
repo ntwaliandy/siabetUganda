@@ -287,6 +287,7 @@ class User:
             if len(sender_username_info) == 0:
                 return Md.make_response(404, "user not found")
             sender_secret = sender_username_info[0]['seed_key']
+            sender_username = sender_username_info[0]['username']
 
             if amount > 0:
                 receiver = data['receiver']
@@ -305,6 +306,15 @@ class User:
                 txn_hash = Stellar().make_payment(sender_key_pair, receiver, asset_code, asset_issuer,
                                                   amount, memo)
                 response = {"hash": txn_hash}
+                receiver_info = get_user_by_key(receiver)
+                if len(receiver_info) > 0:
+                    receiver_fcm = receiver_info[0]['fcm_token']
+                    message = "You have received " + amount + " " + asset_code + " from " + sender_username
+                    title = "Received Payment"
+                    message_type = "transaction"
+                    message_dic = {"title": title, "message": message, "type": message_type}
+                    fcm.send(receiver_fcm, message_dic)
+                Md.send_notification("", sender_username_info[0]['fcm_token'], "send_money")
                 return Md.make_response(100, "success", response)
         except Exception as e:
             return Md.make_response(203, str(e))
@@ -312,6 +322,11 @@ class User:
 
 def get_played(user_id):
     res = Db.select_query("select * from sia_bets where user_id = '" + user_id + "'")
+    return res
+
+
+def get_user_by_key(public_key):
+    res = Db.select_query("select * from sia_user where public_key = '" + public_key + "'")
     return res
 
 
