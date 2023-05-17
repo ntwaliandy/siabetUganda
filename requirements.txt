@@ -1,4 +1,4 @@
-pillow~=8.2.0
+# pillow~=8.2.0
 werkzeug~=2.0.1
 python-dateutil
 requests

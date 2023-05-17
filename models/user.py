@@ -25,7 +25,7 @@ class User:
             print(data)
             username = str(data["username"])
             password = data["password"]
-            email = data["email"]
+            email = data["email"] 
 
             if username == "" or len(username) < 3 or password == "" or len(password) < 6:
                 return Md.make_response(203, "username should be over 3 characters and password over 6")
@@ -35,15 +35,19 @@ class User:
 
             password = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-            check_username = Md.get_user_by_username(username)
+            # check_username = Md.get_user_by_username(username, email)
+            check_username = Db.select_query("select * from sia_user where username = '" + username + "' or email = '" + email + "'")
             if len(check_username) > 0:
                 return Md.make_response(203, "record already exists")
             user_keypair = Keypair.random()
             public_key = user_keypair.public_key
+            print(public_key)
             jwt_token = jwt.encode(data, SecretKey, algorithm="HS256")
             seed_key = user_keypair.secret
+            print(seed_key)
             mnemonic_phrase = user_keypair.generate_mnemonic_phrase()
-            Stellar().sponsor_account(public_key, user_keypair)
+            print(mnemonic_phrase)
+            # res = Stellar().sponsor_account(public_key, user_keypair)
             user_id = str(uuid.uuid1())
             avatar = random.randint(0, 101)
             is_validator = False
@@ -88,7 +92,7 @@ class User:
 
     @staticmethod
     def search_users(q):
-        res = Db.select_query("select * from sia_user where username Like '" + q + "%' LIMIT 20")
+        res = Db.select_query("select * from sia_user where username Like '" + str(q) + "%' LIMIT 20")
         list_info = []
         for x in res:
             user = Md.get_user_info(x)

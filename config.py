@@ -7,4 +7,4 @@ FILES_LOCATION = 'file:///E:/work/python/Lyxa/uploads/'
 END_POINT = 'http:localhost:8000/'
 SecretKey = '123456789'
 
-DB_CONFIG = dict(username="root", password="", host="localhost", port=3306, db="2021_sia")
+DB_CONFIG = dict(username="root", password="Andy@250", host="localhost", port=3306, db="siabet_db")

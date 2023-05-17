@@ -2,7 +2,7 @@ import os
 import re
 
 import jwt
-from PIL import Image
+# from PIL import Image
 from flask import jsonify, json, request
 from urllib3.packages.six import wraps
 from werkzeug.utils import secure_filename
